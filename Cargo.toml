@@ -6,7 +6,7 @@ description = "pnos 系统运行时 - 应用注册中心、反向代理、应用
 license = "MIT"
 
 [dependencies]
-pnos = { path = "../pnos-spec" }
+pnos = { git = "https://github.com/PandaNetOS/pnos-spec.git", branch = "main" }
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.4"
