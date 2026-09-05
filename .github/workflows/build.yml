@@ -34,3 +34,12 @@ jobs:
           platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Trigger PNOS-docker assemble
+        if: always()
+        run: |
+          curl -s -X POST \
+            -H "Authorization: token ${{ secrets.PNOS_TRIGGER_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/PandaNetOS/PNOS-docker/actions/workflows/build.yml/dispatches \
+            -d '{"ref":"main"}'
+          echo "PNOS-docker build triggered"
