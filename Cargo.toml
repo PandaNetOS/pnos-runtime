@@ -1,0 +1,26 @@
+[package]
+name = "pnos-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "pnos 系统运行时 - 应用注册中心、反向代理、应用管理、系统监控"
+license = "MIT"
+
+[dependencies]
+pnos = { path = "../pnos-spec" }
+axum = { version = "0.7", features = ["ws"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "fs", "trace"] }
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+sysinfo = "0.30"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+sha2 = "0.10"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+thiserror = "1"
+uuid = { version = "1", features = ["v4"] }
+futures-util = "0.3"
