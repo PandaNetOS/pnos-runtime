@@ -52,7 +52,7 @@ impl Registry {
             web_path: req.web_path,
             dependencies: req.dependencies,
             registered_at: now.clone(),
-            last_heartbeat: now,
+            last_heartbeat: now.clone(),
         };
 
         let app = RegisteredApp {
@@ -67,7 +67,7 @@ impl Registry {
         AppRegisterResponse {
             token,
             app_id: info.id,
-            registered_at: now,
+            registered_at: now.clone(),
         }
     }
 

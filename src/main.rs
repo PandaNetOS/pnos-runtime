@@ -39,6 +39,8 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!("商店刷新失败（将使用缓存）: {}", e);
     }
 
+    let port = state.config.port;
+
     // 构建路由
     let app = Router::new()
         // API 路由
@@ -54,7 +56,6 @@ async fn main() -> anyhow::Result<()> {
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state);
 
-    let port = state.config.port;
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     info!("pnos-runtime 监听: http://{}", addr);
 

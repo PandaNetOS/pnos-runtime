@@ -10,7 +10,7 @@ use pnos::response::ApiResponse;
 
 use crate::config::AppState;
 
-pub fn routes(state: Arc<AppState>) -> Router {
+pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/apps/register", post(register))
         .route("/apps/unregister", post(unregister))
@@ -21,7 +21,6 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route("/apps/:id/install", post(install_app))
         .route("/apps/:id/start", post(start_app))
         .route("/apps/:id/stop", post(stop_app))
-        .with_state(state)
 }
 
 /// 注册应用

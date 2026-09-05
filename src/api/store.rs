@@ -12,13 +12,12 @@ use pnos::response::ApiResponse;
 
 use crate::config::AppState;
 
-pub fn routes(state: Arc<AppState>) -> Router {
+pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/store/sources", get(list_sources))
         .route("/store/sources/{id}/refresh", post(refresh_source))
         .route("/store/apps", get(list_apps))
         .route("/store/apps/{id}", get(app_detail))
-        .with_state(state)
 }
 
 async fn list_sources(

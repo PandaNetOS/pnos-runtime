@@ -9,11 +9,10 @@ use pnos::system::{SystemInfo, SystemStats};
 
 use crate::config::AppState;
 
-pub fn routes(state: Arc<AppState>) -> Router {
+pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/system/info", get(system_info))
         .route("/system/stats", get(system_stats))
-        .with_state(state)
 }
 
 async fn system_info(State(state): State<Arc<AppState>>) -> Json<ApiResponse<SystemInfo>> {
