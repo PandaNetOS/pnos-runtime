@@ -135,8 +135,8 @@ impl AppManager {
 
     /// 获取应用状态
     pub async fn status(&self, app_id: &str) -> AppStatus {
-        let processes = self.processes.read().await;
-        if let Some(app) = processes.get(app_id) {
+        let mut processes = self.processes.write().await;
+        if let Some(app) = processes.get_mut(app_id) {
             // 检查进程是否还活着
             if app.process.try_wait().unwrap_or(None).is_none() {
                 AppStatus::Running

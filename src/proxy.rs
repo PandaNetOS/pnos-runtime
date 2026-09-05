@@ -4,10 +4,9 @@
 
 use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, Method, Request, StatusCode, Uri};
+use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::Response;
 use bytes::Bytes;
-use futures_util::StreamExt;
 
 use crate::config::AppState;
 use std::sync::Arc;
@@ -52,17 +51,19 @@ pub async fn proxy_handler(
         .map_err(|_| StatusCode::BAD_GATEWAY)?;
 
     // 构建响应
-    let mut builder = Response::builder().status(resp.status());
-    for (key, value) in resp.headers() {
+    let status = resp.status();
+    let resp_headers = resp.headers().clone();
+    let resp_body = resp
+        .bytes()
+        .await
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+
+    let mut builder = Response::builder().status(status);
+    for (key, value) in resp_headers.iter() {
         builder = builder.header(key, value);
     }
 
-    let body_stream = resp.bytes_stream().map(|result| {
-        result.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-    });
-    let body = Body::from_stream(body_stream);
-
     builder
-        .body(body)
+        .body(Body::from(resp_body))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }

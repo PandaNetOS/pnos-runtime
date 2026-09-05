@@ -46,8 +46,12 @@ impl MonitorService {
         let mut sys = self.sys.lock().unwrap();
         sys.refresh_all();
 
-        let cpu_usage = sys.global_cpu_usage();
         let cpu_per_core: Vec<f32> = sys.cpus().iter().map(|c| c.cpu_usage()).collect();
+        let cpu_usage = if !cpu_per_core.is_empty() {
+            cpu_per_core.iter().sum::<f32>() / cpu_per_core.len() as f32
+        } else {
+            0.0
+        };
 
         let total_memory = sys.total_memory();
         let used_memory = sys.used_memory();
@@ -85,14 +89,18 @@ impl MonitorService {
         SystemStats {
             cpu_usage,
             cpu_per_core,
-            memory_total,
+            memory_total: total_memory,
             memory_used: used_memory,
             memory_usage,
             swap_total: sys.total_swap(),
             swap_used: sys.used_swap(),
             disks: disks_info,
             network: NetworkStats::default(),
-            load_average: [load_avg.one as f32, load_avg.five as f32, load_avg.fifteen as f32],
+            load_average: [
+                load_avg.one as f32,
+                load_avg.five as f32,
+                load_avg.fifteen as f32,
+            ],
             process_count: sys.processes().len() as u32,
         }
     }
