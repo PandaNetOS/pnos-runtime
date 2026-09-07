@@ -1,10 +1,14 @@
-//! 应用管理 API：注册、心跳、发现、安装、启动、停止
+//! 组件管理 API：注册、心跳、发现、安装、启动、停止
+//!
+//! 统一 /components/* 为主路径，同时保留 /apps/* 作为兼容路径。
 
 use std::sync::Arc;
 
 use axum::{extract::State, routing::{get, post}, Json, Router};
+use pnos::component::ComponentType;
+use pnos::discovery::ComponentDiscoverResponse;
 use pnos::registry::{
-    AppDiscoverResponse, AppRegisterRequest, AppRegisterResponse, HeartbeatRequest,
+    ComponentRegisterRequest, ComponentRegisterResponse, HeartbeatRequest,
 };
 use pnos::response::ApiResponse;
 
@@ -12,75 +16,104 @@ use crate::config::AppState;
 
 pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
+        // ===== 统一组件路径（主路径） =====
+        .route("/components/register", post(register))
+        .route("/components/unregister", post(unregister))
+        .route("/components/heartbeat", post(heartbeat))
+        .route("/components", get(list_components))
+        .route("/components/:id", get(component_detail))
+        .route("/components/:id/discover", get(discover))
+        // ===== 兼容路径（旧版 /apps/*，已废弃） =====
         .route("/apps/register", post(register))
         .route("/apps/unregister", post(unregister))
         .route("/apps/heartbeat", post(heartbeat))
-        .route("/apps", get(list_apps))
-        .route("/apps/:id", get(app_detail))
+        .route("/apps", get(list_components))
+        .route("/apps/:id", get(component_detail))
         .route("/apps/:id/discover", get(discover))
+        // ===== 应用管理（商店安装的应用） =====
         .route("/apps/:id/install", post(install_app))
         .route("/apps/:id/start", post(start_app))
         .route("/apps/:id/stop", post(stop_app))
 }
 
-/// 注册应用
+/// 注册组件
 async fn register(
     State(state): State<Arc<AppState>>,
-    Json(req): Json<AppRegisterRequest>,
-) -> Json<ApiResponse<AppRegisterResponse>> {
+    Json(req): Json<ComponentRegisterRequest>,
+) -> Json<ApiResponse<ComponentRegisterResponse>> {
     let resp = state.registry.register(req).await;
     Json(ApiResponse::success(resp))
 }
 
-/// 注销应用
+/// 注销组件
 async fn unregister(
     State(state): State<Arc<AppState>>,
     Json(req): Json<serde_json::Value>,
 ) -> Json<ApiResponse<bool>> {
-    let app_id = req["id"].as_str().unwrap_or("");
-    let ok = state.registry.unregister(app_id).await;
+    let component_id = req["id"].as_str().unwrap_or("");
+    let ok = state.registry.unregister(component_id).await;
     Json(ApiResponse::success(ok))
 }
 
-/// 心跳
+/// 心跳（统一组件心跳）
 async fn heartbeat(
     State(state): State<Arc<AppState>>,
     Json(req): Json<HeartbeatRequest>,
 ) -> Json<ApiResponse<bool>> {
-    let ok = state.registry.heartbeat(&req.id, req.status).await;
+    let ok = state
+        .registry
+        .heartbeat(&req.id, req.status, req.load, req.active_tasks, req.bytes_downloaded)
+        .await;
     Json(ApiResponse::success(ok))
 }
 
-/// 列出所有应用
-async fn list_apps(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<pnos::registry::AppInfo>>> {
-    let apps = state.registry.list().await;
-    Json(ApiResponse::success(apps))
+/// 列出所有组件
+async fn list_components(
+    State(state): State<Arc<AppState>>,
+) -> Json<ApiResponse<Vec<pnos::registry::ComponentInfo>>> {
+    let components = state.registry.list().await;
+    Json(ApiResponse::success(components))
 }
 
-/// 应用详情
-async fn app_detail(
+/// 组件详情
+async fn component_detail(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(id): axum::extract::Path<String>,
-) -> Json<ApiResponse<pnos::registry::AppInfo>> {
+) -> Json<ApiResponse<pnos::registry::ComponentInfo>> {
     match state.registry.get(&id).await {
-        Some(app) => Json(ApiResponse::success(app)),
+        Some(component) => Json(ApiResponse::success(component)),
         None => Json(ApiResponse::error_code(
-            pnos::error::ErrorCode::AppNotFound,
-            "应用不存在",
+            pnos::error::ErrorCode::ComponentNotRegistered,
+            "组件不存在",
         )),
     }
 }
 
-/// 发现应用（获取地址）
+/// 发现组件（获取地址）
 async fn discover(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(id): axum::extract::Path<String>,
-) -> Json<ApiResponse<AppDiscoverResponse>> {
+) -> Json<ApiResponse<ComponentDiscoverResponse>> {
     match state.registry.get(&id).await {
-        Some(app) => Json(ApiResponse::success(AppDiscoverResponse::from_info(&app))),
+        Some(component) => {
+            let resp = ComponentDiscoverResponse {
+                id: component.id,
+                name: component.name,
+                version: component.version,
+                component_type: component.component_type,
+                address: component.address,
+                port: component.port,
+                capabilities: component.capabilities,
+                region: component.region,
+                status: component.status,
+                base_url: component.base_url,
+                serve_url: component.serve_url,
+            };
+            Json(ApiResponse::success(resp))
+        }
         None => Json(ApiResponse::error_code(
-            pnos::error::ErrorCode::AppNotFound,
-            "应用不存在",
+            pnos::error::ErrorCode::ComponentNotRegistered,
+            "组件不存在",
         )),
     }
 }
@@ -155,4 +188,10 @@ async fn stop_app(
             e.to_string(),
         )),
     }
+}
+
+// 防止未使用警告
+#[allow(dead_code)]
+fn _unused_type_marker() -> ComponentType {
+    ComponentType::App
 }

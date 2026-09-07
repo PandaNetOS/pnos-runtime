@@ -4,9 +4,12 @@
 //! 应用以独立子进程方式运行，由 pnos-runtime 管理生命周期。
 
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::PathBuf;
 use std::process::Stdio;
 
+use flate2::read::GzDecoder;
+use tar::Archive;
 use tokio::process::{Child, Command};
 use tokio::sync::RwLock;
 use tracing::{error, info};
@@ -39,33 +42,109 @@ impl AppManager {
         let app_dir = self.app_dir(&manifest.id);
         tokio::fs::create_dir_all(&app_dir).await?;
 
-        // 下载二进制
         let binary_path = app_dir.join(&manifest.binary.binary_name);
         if !binary_path.exists() {
             info!("下载应用 {}: {}", manifest.id, manifest.binary.download_url);
-            let resp = reqwest::get(&manifest.binary.download_url).await?;
-            let bytes = resp.bytes().await?;
+
+            let resp = match reqwest::get(&manifest.binary.download_url).await {
+                Ok(r) => r,
+                Err(e) => {
+                    error!("下载失败 {}: {}", manifest.id, e);
+                    anyhow::bail!("下载失败: {}", e);
+                }
+            };
+
+            if !resp.status().is_success() {
+                error!("下载 HTTP 错误 {}: {}", manifest.id, resp.status());
+                anyhow::bail!("下载失败: HTTP {}", resp.status());
+            }
+
+            let bytes = match resp.bytes().await {
+                Ok(b) => b,
+                Err(e) => {
+                    error!("读取下载内容失败 {}: {}", manifest.id, e);
+                    anyhow::bail!("读取下载内容失败: {}", e);
+                }
+            };
 
             // 校验 SHA256
             if let Some(expected) = &manifest.binary.sha256 {
-                use sha2::{Digest, Sha256};
-                let mut hasher = Sha256::new();
-                hasher.update(&bytes);
-                let actual = format!("{:x}", hasher.finalize());
-                if &actual != expected {
-                    anyhow::bail!("SHA256 校验失败: 期望={}, 实际={}", expected, actual);
+                if !expected.is_empty() {
+                    use sha2::{Digest, Sha256};
+                    let mut hasher = Sha256::new();
+                    hasher.update(&bytes);
+                    let actual = format!("{:x}", hasher.finalize());
+                    if &actual != expected {
+                        error!("SHA256 校验失败 {}: 期望={}, 实际={}", manifest.id, expected, actual);
+                        anyhow::bail!("SHA256 校验失败: 期望={}, 实际={}", expected, actual);
+                    }
                 }
             }
 
-            // 保存文件
-            tokio::fs::write(&binary_path, &bytes).await?;
+            // 解压 tar.gz 或直接写入
+            let binary_data = if manifest.binary.download_url.ends_with(".tar.gz")
+                || manifest.binary.download_url.ends_with(".tgz")
+            {
+                info!("解压 tar.gz: {}", manifest.id);
+                let decoder = GzDecoder::new(&bytes[..]);
+                let mut archive = Archive::new(decoder);
+                let mut binary_data: Option<Vec<u8>> = None;
+                let entries = match archive.entries() {
+                    Ok(e) => e,
+                    Err(e) => {
+                        error!("读取 tar.gz 条目失败 {}: {}", manifest.id, e);
+                        anyhow::bail!("解压失败: {}", e);
+                    }
+                };
+                for entry in entries {
+                    let mut entry = match entry {
+                        Ok(e) => e,
+                        Err(e) => {
+                            error!("tar.gz 条目错误 {}: {}", manifest.id, e);
+                            continue;
+                        }
+                    };
+                    let path = match entry.path() {
+                        Ok(p) => p.into_owned(),
+                        Err(_) => continue,
+                    };
+                    let is_target = path
+                        .file_name()
+                        .map(|n| n == manifest.binary.binary_name.as_str())
+                        .unwrap_or(false);
+                    if is_target {
+                        let mut buf = Vec::new();
+                        if let Err(e) = entry.read_to_end(&mut buf) {
+                            error!("读取 tar.gz 内文件失败 {}: {}", manifest.id, e);
+                            anyhow::bail!("解压失败: {}", e);
+                        }
+                        binary_data = Some(buf);
+                        break;
+                    }
+                }
+                match binary_data {
+                    Some(d) => d,
+                    None => {
+                        error!("tar.gz 中找不到二进制文件 {}", manifest.binary.binary_name);
+                        anyhow::bail!("tar.gz 中找不到二进制文件 {}", manifest.binary.binary_name);
+                    }
+                }
+            } else {
+                bytes.to_vec()
+            };
 
-            // 加执行权限
+            // 保存二进制
+            if let Err(e) = tokio::fs::write(&binary_path, &binary_data).await {
+                error!("写入二进制失败 {}: {}", manifest.id, e);
+                anyhow::bail!("写入二进制失败: {}", e);
+            }
+
+            // 加执行权限（unix）
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
                 let perms = std::fs::Permissions::from_mode(0o755);
-                tokio::fs::set_permissions(&binary_path, perms).await?;
+                let _ = tokio::fs::set_permissions(&binary_path, perms).await;
             }
         }
 
@@ -74,7 +153,7 @@ impl AppManager {
         let yaml = serde_yaml::to_string(manifest)?;
         tokio::fs::write(manifest_path, yaml).await?;
 
-        info!("应用安装完成: {}", manifest.id);
+        info!("应用安装完成: {} -> {:?}", manifest.id, binary_path);
         Ok(())
     }
 
@@ -84,6 +163,7 @@ impl AppManager {
         let binary_path = app_dir.join(&manifest.binary.binary_name);
 
         if !binary_path.exists() {
+            error!("二进制文件不存在: {:?}", binary_path);
             anyhow::bail!("二进制文件不存在: {:?}", binary_path);
         }
 
@@ -108,7 +188,13 @@ impl AppManager {
             .env("PNOS_DATA_DIR", &self.config.data_dir)
             .env("PNOS_MEDIA_DIR", &self.config.media_dir);
 
-        let child = cmd.spawn()?;
+        let child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                error!("启动应用失败 {}: {}", manifest.id, e);
+                anyhow::bail!("启动失败: {}", e);
+            }
+        };
         info!("应用启动: {} (pid={:?})", manifest.id, child.id());
 
         self.processes
@@ -137,7 +223,6 @@ impl AppManager {
     pub async fn status(&self, app_id: &str) -> AppStatus {
         let mut processes = self.processes.write().await;
         if let Some(app) = processes.get_mut(app_id) {
-            // 检查进程是否还活着
             if app.process.try_wait().unwrap_or(None).is_none() {
                 AppStatus::Running
             } else {

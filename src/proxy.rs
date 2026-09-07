@@ -14,7 +14,30 @@ use std::sync::Arc;
 /// 反向代理处理函数
 pub async fn proxy_handler(
     State(state): State<Arc<AppState>>,
+    Path((app_id, _path)): Path<(String, String)>,
+    method: Method,
+    headers: HeaderMap,
+    uri: Uri,
+    body: Bytes,
+) -> Result<Response<Body>, StatusCode> {
+    proxy_request(state, app_id, method, headers, uri, body).await
+}
+
+/// 代理应用根路径。catch-all 路由不匹配空路径，因此单独处理 `/app/:id`。
+pub async fn proxy_root_handler(
+    State(state): State<Arc<AppState>>,
     Path(app_id): Path<String>,
+    method: Method,
+    headers: HeaderMap,
+    uri: Uri,
+    body: Bytes,
+) -> Result<Response<Body>, StatusCode> {
+    proxy_request(state, app_id, method, headers, uri, body).await
+}
+
+async fn proxy_request(
+    state: Arc<AppState>,
+    app_id: String,
     method: Method,
     headers: HeaderMap,
     uri: Uri,
@@ -45,18 +68,12 @@ pub async fn proxy_handler(
         }
     }
 
-    let resp = req
-        .send()
-        .await
-        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let resp = req.send().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
     // 构建响应
     let status = resp.status();
     let resp_headers = resp.headers().clone();
-    let resp_body = resp
-        .bytes()
-        .await
-        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let resp_body = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
     let mut builder = Response::builder().status(status);
     for (key, value) in resp_headers.iter() {
