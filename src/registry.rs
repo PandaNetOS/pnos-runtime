@@ -12,9 +12,7 @@ use tracing::{info, warn};
 
 use pnos::component::{ComponentStatus, ComponentType};
 use pnos::health::HealthStatus;
-use pnos::registry::{
-    ComponentInfo, ComponentRegisterRequest, ComponentRegisterResponse,
-};
+use pnos::registry::{ComponentInfo, ComponentRegisterRequest, ComponentRegisterResponse};
 
 /// 注册的组件记录（含内部状态）
 struct RegisteredComponent {
@@ -84,8 +82,14 @@ impl Registry {
             token: token.clone(),
         };
 
-        self.components.write().await.insert(req.id.clone(), component);
-        info!("组件注册: {} (type={}, port={})", info.id, info.component_type, info.port);
+        self.components
+            .write()
+            .await
+            .insert(req.id.clone(), component);
+        info!(
+            "组件注册: {} (type={}, port={})",
+            info.id, info.component_type, info.port
+        );
 
         ComponentRegisterResponse {
             token,
@@ -128,7 +132,11 @@ impl Registry {
 
     /// 获取组件信息
     pub async fn get(&self, component_id: &str) -> Option<ComponentInfo> {
-        self.components.read().await.get(component_id).map(|c| c.info.clone())
+        self.components
+            .read()
+            .await
+            .get(component_id)
+            .map(|c| c.info.clone())
     }
 
     /// 列出所有组件

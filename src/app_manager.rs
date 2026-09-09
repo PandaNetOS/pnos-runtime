@@ -75,7 +75,10 @@ impl AppManager {
                     hasher.update(&bytes);
                     let actual = format!("{:x}", hasher.finalize());
                     if &actual != expected {
-                        error!("SHA256 校验失败 {}: 期望={}, 实际={}", manifest.id, expected, actual);
+                        error!(
+                            "SHA256 校验失败 {}: 期望={}, 实际={}",
+                            manifest.id, expected, actual
+                        );
                         anyhow::bail!("SHA256 校验失败: 期望={}, 实际={}", expected, actual);
                     }
                 }
@@ -183,10 +186,13 @@ impl AppManager {
             cmd.env(&env.name, &env.value);
         }
         // 注入 pnos 环境变量
-        cmd.env("PNOS_RUNTIME_URL", format!("http://127.0.0.1:{}", self.config.port))
-            .env("PNOS_APP_ID", &manifest.id)
-            .env("PNOS_DATA_DIR", &self.config.data_dir)
-            .env("PNOS_MEDIA_DIR", &self.config.media_dir);
+        cmd.env(
+            "PNOS_RUNTIME_URL",
+            format!("http://127.0.0.1:{}", self.config.port),
+        )
+        .env("PNOS_APP_ID", &manifest.id)
+        .env("PNOS_DATA_DIR", &self.config.data_dir)
+        .env("PNOS_MEDIA_DIR", &self.config.media_dir);
 
         let child = match cmd.spawn() {
             Ok(c) => c,
@@ -197,13 +203,13 @@ impl AppManager {
         };
         info!("应用启动: {} (pid={:?})", manifest.id, child.id());
 
-        self.processes
-            .write()
-            .await
-            .insert(manifest.id.clone(), RunningApp {
+        self.processes.write().await.insert(
+            manifest.id.clone(),
+            RunningApp {
                 process: child,
                 manifest: manifest.clone(),
-            });
+            },
+        );
 
         Ok(())
     }

@@ -1,8 +1,10 @@
 //! pnos-runtime 入口
 
+mod agent;
 mod api;
 mod app_manager;
 mod config;
+mod install;
 mod proxy;
 mod registry;
 mod service;
@@ -38,6 +40,9 @@ async fn main() -> anyhow::Result<()> {
     // 初始化应用状态
     let state = AppState::new(config).await?;
     let state = Arc::new(state);
+
+    // 启动 Agent 监控循环（崩溃检测 + 健康检查 + 自动重启）
+    state.agent_manager.clone().start_monitor(state.clone());
 
     // 商店同步依赖外部网络，不能阻塞控制面监听。服务先就绪，目录在后台刷新。
     let store_service = state.store_service.clone();

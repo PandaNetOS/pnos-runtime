@@ -4,12 +4,14 @@
 
 use std::sync::Arc;
 
-use axum::{extract::State, routing::{get, post}, Json, Router};
+use axum::{
+    extract::State,
+    routing::{get, post},
+    Json, Router,
+};
 use pnos::component::ComponentType;
 use pnos::discovery::ComponentDiscoverResponse;
-use pnos::registry::{
-    ComponentRegisterRequest, ComponentRegisterResponse, HeartbeatRequest,
-};
+use pnos::registry::{ComponentRegisterRequest, ComponentRegisterResponse, HeartbeatRequest};
 use pnos::response::ApiResponse;
 
 use crate::config::AppState;
@@ -62,7 +64,13 @@ async fn heartbeat(
 ) -> Json<ApiResponse<bool>> {
     let ok = state
         .registry
-        .heartbeat(&req.id, req.status, req.load, req.active_tasks, req.bytes_downloaded)
+        .heartbeat(
+            &req.id,
+            req.status,
+            req.load,
+            req.active_tasks,
+            req.bytes_downloaded,
+        )
         .await;
     Json(ApiResponse::success(ok))
 }

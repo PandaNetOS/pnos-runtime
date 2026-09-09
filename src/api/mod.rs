@@ -1,5 +1,6 @@
 //! API 路由注册
 
+pub mod agents;
 pub mod apps;
 pub mod store;
 pub mod system;
@@ -15,5 +16,6 @@ pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .merge(system::routes(state.clone()))
         .merge(apps::routes(state.clone()))
-        .merge(store::routes(state))
+        .merge(store::routes(state.clone()))
+        .merge(agents::routes(state))
 }

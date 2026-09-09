@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use reqwest::Client;
 
+use crate::agent::AgentManager;
 use crate::app_manager::AppManager;
+use crate::install::InstallService;
 use crate::registry::Registry;
 use crate::service::monitor::MonitorService;
 use crate::service::store::StoreService;
@@ -17,6 +19,8 @@ pub struct AppState {
     pub app_manager: Arc<AppManager>,
     pub store_service: Arc<StoreService>,
     pub monitor_service: Arc<MonitorService>,
+    pub agent_manager: Arc<AgentManager>,
+    pub install_service: Arc<InstallService>,
     pub http_client: Client,
 }
 
@@ -29,12 +33,25 @@ impl AppState {
             .timeout(std::time::Duration::from_secs(30))
             .build()?;
 
+        let runtime_url = format!("http://127.0.0.1:{}", config.port);
+        let agent_manager = Arc::new(AgentManager::new(runtime_url));
+
+        let apps_dir = std::path::PathBuf::from(&config.app_data_dir);
+        let data_dir = std::path::PathBuf::from(&config.data_dir);
+        let install_service = Arc::new(InstallService::new(
+            apps_dir,
+            data_dir,
+            agent_manager.clone(),
+        ));
+
         Ok(AppState {
             config: config.clone(),
             registry,
             app_manager: Arc::new(AppManager::new(config.clone())),
             store_service: Arc::new(StoreService::new(config.clone())),
             monitor_service: Arc::new(MonitorService::new()),
+            agent_manager,
+            install_service,
             http_client,
         })
     }

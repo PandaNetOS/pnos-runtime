@@ -43,9 +43,12 @@ impl StoreService {
         let url = &self.config.default_store_url;
         tracing::info!("刷新商店源: {}", url);
 
-        let resp = reqwest::get(url)
-            .await
-            .map_err(|e| PnosError::new(ErrorCode::StoreSourceUnreachable, format!("请求失败: {}", e)))?;
+        let resp = reqwest::get(url).await.map_err(|e| {
+            PnosError::new(
+                ErrorCode::StoreSourceUnreachable,
+                format!("请求失败: {}", e),
+            )
+        })?;
 
         if !resp.status().is_success() {
             return Err(PnosError::new(
@@ -54,20 +57,21 @@ impl StoreService {
             ));
         }
 
-        let index: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| PnosError::new(ErrorCode::StoreSourceUnreachable, format!("解析失败: {}", e)))?;
+        let index: serde_json::Value = resp.json().await.map_err(|e| {
+            PnosError::new(
+                ErrorCode::StoreSourceUnreachable,
+                format!("解析失败: {}", e),
+            )
+        })?;
 
         let apps_list = index["apps"].as_array().cloned().unwrap_or_default();
         let base_url = url.trim_end_matches("index.json");
         let mut apps = HashMap::new();
 
         for app_info in apps_list {
-            if let (Some(id), Some(app_yml_path)) = (
-                app_info["id"].as_str(),
-                app_info["app_yml"].as_str(),
-            ) {
+            if let (Some(id), Some(app_yml_path)) =
+                (app_info["id"].as_str(), app_info["app_yml"].as_str())
+            {
                 let app_yml_url = format!("{}{}", base_url, app_yml_path);
                 match self.fetch_app_manifest(&app_yml_url).await {
                     Ok(manifest) => {
@@ -94,8 +98,9 @@ impl StoreService {
             .text()
             .await
             .map_err(|e| PnosError::External(format!("读取 app.yml 失败: {}", e)))?;
-        let manifest: AppManifest = serde_yaml::from_str(&content)
-            .map_err(|e| PnosError::new(ErrorCode::AppManifestInvalid, format!("解析失败: {}", e)))?;
+        let manifest: AppManifest = serde_yaml::from_str(&content).map_err(|e| {
+            PnosError::new(ErrorCode::AppManifestInvalid, format!("解析失败: {}", e))
+        })?;
         Ok(manifest)
     }
 
