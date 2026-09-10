@@ -26,3 +26,7 @@ anyhow = "1"
 thiserror = "1"
 uuid = { version = "1", features = ["v4"] }
 futures-util = "0.3"
+
+[dev-dependencies]
+# 通信 SDK（应用/Agent 经其注册到 runtime）接入验证用，不影响生产二进制
+pnos-comm = { git = "https://github.com/PandaNetOS/pnos-sdk.git", branch = "main", package = "pnos-comm" }
