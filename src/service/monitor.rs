@@ -89,6 +89,7 @@ impl MonitorService {
                 ticker.tick().await;
                 let stats = svc.collect();
                 *svc.snapshot.write().await = stats;
+                crate::metrics::global().map(|m| m.mark_task("monitor"));
             }
         });
     }

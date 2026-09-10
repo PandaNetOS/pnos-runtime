@@ -5,16 +5,25 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::State,
+    extract::{Query, State},
     routing::{get, post},
     Json, Router,
 };
+use serde::Deserialize;
+
 use pnos::component::ComponentType;
 use pnos::discovery::ComponentDiscoverResponse;
 use pnos::registry::{ComponentRegisterRequest, ComponentRegisterResponse, HeartbeatRequest};
 use pnos::response::ApiResponse;
 
 use crate::config::AppState;
+
+/// 组件列表查询参数（分页，可选）
+#[derive(Debug, Deserialize)]
+struct ComponentListQuery {
+    page: Option<usize>,
+    page_size: Option<usize>,
+}
 
 pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
@@ -76,11 +85,31 @@ async fn heartbeat(
 }
 
 /// 列出所有组件
+///
+/// 支持分页：`?page=&page_size=`（默认 50，最大 200）。不传 `page` 时返回完整列表，
+/// 以向后兼容现有前端（其期望 `data` 为数组）。分页返回
+/// `{ items, total, page, page_size }`。
 async fn list_components(
     State(state): State<Arc<AppState>>,
-) -> Json<ApiResponse<Vec<pnos::registry::ComponentInfo>>> {
-    let components = state.registry.list().await;
-    Json(ApiResponse::success(components))
+    Query(params): Query<ComponentListQuery>,
+) -> Json<ApiResponse<serde_json::Value>> {
+    let all = state.registry.list().await;
+    match params.page {
+        Some(page) => {
+            let total = all.len();
+            let ps = params.page_size.unwrap_or(50).clamp(1, 200);
+            let page = page.max(1);
+            let start = ((page - 1) * ps) as usize;
+            let items: Vec<_> = all.into_iter().skip(start).take(ps).collect();
+            Json(ApiResponse::success(serde_json::json!({
+                "items": items,
+                "total": total,
+                "page": page,
+                "page_size": ps,
+            })))
+        }
+        None => Json(ApiResponse::success(serde_json::json!(all))),
+    }
 }
 
 /// 组件详情

@@ -29,7 +29,7 @@ cargo build --release
 # 需要挂载 Docker socket
 docker run -d \
   --name pnos \
-  -p 80:80 \
+  -p 8080:8080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /volume1/pnos:/data \
   -v /volume1/media:/media \
@@ -40,7 +40,7 @@ docker run -d \
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| PNOS_PORT | 80 | 监听端口 |
+| PNOS_PORT | 8080 | 监听端口 |
 | PNOS_DATA_DIR | /data | 数据目录 |
 | PNOS_MEDIA_DIR | /media | 媒体目录 |
 | PNOS_LOG_LEVEL | info | 日志级别 |

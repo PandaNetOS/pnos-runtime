@@ -177,6 +177,7 @@ impl Registry {
             loop {
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 registry.check_heartbeats().await;
+                crate::metrics::global().map(|m| m.mark_task("heartbeat_checker"));
             }
         });
     }

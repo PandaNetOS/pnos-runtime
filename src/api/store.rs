@@ -19,15 +19,15 @@ pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         // 商店浏览
         .route("/store/sources", get(list_sources))
-        .route("/store/sources/{id}/refresh", post(refresh_source))
+        .route("/store/sources/:id/refresh", post(refresh_source))
         .route("/store/apps", get(list_apps))
-        .route("/store/apps/{id}", get(app_detail))
+        .route("/store/apps/:id", get(app_detail))
         // 已安装应用管理
         .route("/installed", get(list_installed))
-        .route("/installed/{id}", get(installed_detail))
-        .route("/installed/{id}/install", post(install_app))
-        .route("/installed/{id}/upgrade", post(upgrade_app))
-        .route("/installed/{id}/uninstall", delete(uninstall_app))
+        .route("/installed/:id", get(installed_detail))
+        .route("/installed/:id/install", post(install_app))
+        .route("/installed/:id/upgrade", post(upgrade_app))
+        .route("/installed/:id/uninstall", delete(uninstall_app))
         .with_state(state)
 }
 

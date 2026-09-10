@@ -400,6 +400,7 @@ impl AgentManager {
 
             if crashed {
                 self.mark_crash(id).await;
+                crate::metrics::global().map(|m| m.incr_agent_crash());
                 // 自动重启（如果崩溃次数 < 5）
                 let crash_count = self
                     .agents
@@ -416,8 +417,11 @@ impl AgentManager {
                         id, delay, crash_count
                     );
                     tokio::time::sleep(Duration::from_secs(delay)).await;
-                    if let Err(e) = self.start(id).await {
-                        error!("Agent {} 自动重启失败: {}", id, e);
+                    match self.start(id).await {
+                        Ok(_) => {
+                            crate::metrics::global().map(|m| m.incr_agent_restart());
+                        }
+                        Err(e) => error!("Agent {} 自动重启失败: {}", id, e),
                     }
                 }
             }

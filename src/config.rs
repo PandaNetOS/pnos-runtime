@@ -8,6 +8,7 @@ use crate::agent::AgentManager;
 use crate::app_manager::AppManager;
 use crate::install::InstallService;
 use crate::registry::Registry;
+use crate::metrics::Metrics;
 use crate::service::monitor::MonitorService;
 use crate::service::store::StoreService;
 
@@ -15,6 +16,7 @@ use crate::service::store::StoreService;
 #[derive(Clone)]
 pub struct AppState {
     pub config: pnos::config::PnosConfig,
+    pub metrics: Arc<Metrics>,
     pub registry: Registry,
     pub app_manager: Arc<AppManager>,
     pub store_service: Arc<StoreService>,
@@ -26,6 +28,10 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(config: pnos::config::PnosConfig) -> anyhow::Result<Self> {
+        // 性能埋点全局单例：必须最先初始化，其后启动的后台任务才能 mark_task
+        let metrics = Metrics::new();
+        crate::metrics::init_global(metrics.clone());
+
         let registry = Registry::new(config.heartbeat_timeout);
         registry.start_heartbeat_checker();
 
@@ -50,6 +56,7 @@ impl AppState {
 
         Ok(AppState {
             config: config.clone(),
+            metrics,
             registry,
             app_manager: Arc::new(AppManager::new(config.clone())),
             store_service: Arc::new(StoreService::new(config.clone())),

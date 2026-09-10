@@ -13,6 +13,7 @@ pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/system/info", get(system_info))
         .route("/system/stats", get(system_stats))
+        .route("/metrics", get(crate::metrics::get_metrics))
 }
 
 async fn system_info(State(state): State<Arc<AppState>>) -> Json<ApiResponse<SystemInfo>> {

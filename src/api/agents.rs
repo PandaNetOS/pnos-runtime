@@ -17,10 +17,10 @@ use crate::config::AppState;
 pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/agents", get(list_agents))
-        .route("/agents/{id}", get(get_agent))
-        .route("/agents/{id}/start", post(start_agent))
-        .route("/agents/{id}/stop", post(stop_agent))
-        .route("/agents/{id}/restart", post(restart_agent))
+        .route("/agents/:id", get(get_agent))
+        .route("/agents/:id/start", post(start_agent))
+        .route("/agents/:id/stop", post(stop_agent))
+        .route("/agents/:id/restart", post(restart_agent))
         .with_state(state)
 }
 

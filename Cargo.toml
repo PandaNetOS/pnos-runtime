@@ -9,7 +9,7 @@ license = "MIT"
 pnos = { git = "https://github.com/PandaNetOS/pnos-spec.git", branch = "main" }
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
-tower = "0.4"
+tower = { version = "0.4", features = ["timeout", "limit"] }
 tower-http = { version = "0.5", features = ["cors", "fs", "trace"] }
 bytes = "1"
 serde = { version = "1", features = ["derive"] }
