@@ -44,12 +44,16 @@ impl AppState {
             agent_manager.clone(),
         ));
 
+        let monitor_service = Arc::new(MonitorService::new());
+        // 启动后台指标采集（快照模式，避免 /system/stats 阻塞 worker）
+        monitor_service.start();
+
         Ok(AppState {
             config: config.clone(),
             registry,
             app_manager: Arc::new(AppManager::new(config.clone())),
             store_service: Arc::new(StoreService::new(config.clone())),
-            monitor_service: Arc::new(MonitorService::new()),
+            monitor_service,
             agent_manager,
             install_service,
             http_client,

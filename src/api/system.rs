@@ -21,6 +21,6 @@ async fn system_info(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Sys
 }
 
 async fn system_stats(State(state): State<Arc<AppState>>) -> Json<ApiResponse<SystemStats>> {
-    let stats = state.monitor_service.get_stats();
+    let stats = state.monitor_service.get_stats().await;
     Json(ApiResponse::success(stats))
 }
