@@ -11,8 +11,11 @@ use tokio::sync::RwLock;
 use tracing::{info, warn};
 
 use pnos::component::{ComponentStatus, ComponentType};
+use pnos::events::EVENT_COMPONENT_OFFLINE;
 use pnos::health::HealthStatus;
 use pnos::registry::{ComponentInfo, ComponentRegisterRequest, ComponentRegisterResponse};
+
+use crate::ws::publish;
 
 /// 注册的组件记录（含内部状态）
 struct RegisteredComponent {
@@ -170,6 +173,15 @@ impl Registry {
             .unwrap_or(false)
     }
 
+    /// 验证任意 Token 是否有效（用于 WS 鉴权；token 为 UUID，全局唯一）
+    pub async fn token_valid(&self, token: &str) -> bool {
+        if token.is_empty() {
+            return false;
+        }
+        let components = self.components.read().await;
+        components.values().any(|c| c.token == token)
+    }
+
     /// 启动心跳超时检查任务
     pub fn start_heartbeat_checker(&self) {
         let registry = self.clone();
@@ -184,15 +196,29 @@ impl Registry {
 
     /// 检查心跳超时
     async fn check_heartbeats(&self) {
-        let mut components = self.components.write().await;
-        let now = Instant::now();
-        for component in components.values_mut() {
-            if now.duration_since(component.last_heartbeat) > self.heartbeat_timeout {
-                if component.info.status != ComponentStatus::Offline {
-                    warn!("组件心跳超时，标记为离线: {}", component.info.id);
-                    component.info.status = ComponentStatus::Offline;
+        let mut offline = Vec::new();
+        {
+            let mut components = self.components.write().await;
+            let now = Instant::now();
+            for component in components.values_mut() {
+                if now.duration_since(component.last_heartbeat) > self.heartbeat_timeout {
+                    if component.info.status != ComponentStatus::Offline {
+                        warn!("组件心跳超时，标记为离线: {}", component.info.id);
+                        component.info.status = ComponentStatus::Offline;
+                        offline.push((
+                            component.info.id.clone(),
+                            format!("{:?}", component.info.component_type),
+                        ));
+                    }
                 }
             }
+        }
+        // 释放写锁后再发布事件，避免持锁跨 await
+        for (id, ctype) in offline {
+            publish(
+                EVENT_COMPONENT_OFFLINE,
+                serde_json::json!({"component_id": id, "component_type": ctype}),
+            );
         }
     }
 }

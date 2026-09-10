@@ -16,7 +16,10 @@ use std::time::{Duration, Instant};
 use sysinfo::{Disks, System};
 use tokio::sync::RwLock;
 
+use pnos::events::EVENT_SYSTEM_STATS;
 use pnos::system::{DiskInfo, NetworkStats, SystemInfo, SystemStats};
+
+use crate::ws::publish;
 
 /// 默认整体采样间隔（CPU/内存/进程），可用环境变量 `PNOS_MONITOR_INTERVAL_SECS` 覆盖。
 const DEFAULT_INTERVAL_SECS: u64 = 2;
@@ -88,7 +91,12 @@ impl MonitorService {
             loop {
                 ticker.tick().await;
                 let stats = svc.collect();
-                *svc.snapshot.write().await = stats;
+                *svc.snapshot.write().await = stats.clone();
+                // 实时推送系统指标（低频，2s 一次，广播给订阅 system.stats 的客户端）
+                publish(
+                    EVENT_SYSTEM_STATS,
+                    serde_json::to_value(&stats).unwrap_or(serde_json::Value::Null),
+                );
                 crate::metrics::global().map(|m| m.mark_task("monitor"));
             }
         });

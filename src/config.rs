@@ -31,6 +31,8 @@ impl AppState {
         // 性能埋点全局单例：必须最先初始化，其后启动的后台任务才能 mark_task
         let metrics = Metrics::new();
         crate::metrics::init_global(metrics.clone());
+        // 事件总线全局单例：供各模块发布生命周期事件（WS 端点消费）
+        crate::ws::init();
 
         let registry = Registry::new(config.heartbeat_timeout);
         registry.start_heartbeat_checker();

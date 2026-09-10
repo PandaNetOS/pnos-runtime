@@ -10,6 +10,7 @@ mod registry;
 mod service;
 mod metrics;
 mod rate_limit;
+mod ws;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -90,6 +91,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/app/:id/*path", axum::routing::any(proxy::proxy_handler))
         .layer(axum::middleware::from_fn(rate_limit::proxy_timeout_middleware))
         .layer(axum::extract::DefaultBodyLimit::disable())
+        // WebSocket 事件端点：刻意放在代理超时层之外，避免长连接被 30s/120s 超时强断
+        .route("/api/v1/ws", get(crate::ws::ws_handler))
         // 健康检查（liveness）：保持无超时，便于探针快速返回
         .route("/health", get(health))
         // 静态文件（pnos-web）

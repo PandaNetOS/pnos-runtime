@@ -13,10 +13,14 @@ use serde::Deserialize;
 
 use pnos::component::ComponentType;
 use pnos::discovery::ComponentDiscoverResponse;
+use pnos::events::{
+    EVENT_APP_STATUS_CHANGED, EVENT_COMPONENT_REGISTERED, EVENT_COMPONENT_UNREGISTERED,
+};
 use pnos::registry::{ComponentRegisterRequest, ComponentRegisterResponse, HeartbeatRequest};
 use pnos::response::ApiResponse;
 
 use crate::config::AppState;
+use crate::ws::publish;
 
 /// 组件列表查询参数（分页，可选）
 #[derive(Debug, Deserialize)]
@@ -52,7 +56,20 @@ async fn register(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ComponentRegisterRequest>,
 ) -> Json<ApiResponse<ComponentRegisterResponse>> {
+    let component_id = req.id.clone();
+    let name = req.name.clone();
+    let port = req.port;
+    let ctype = format!("{:?}", req.component_type);
     let resp = state.registry.register(req).await;
+    publish(
+        EVENT_COMPONENT_REGISTERED,
+        serde_json::json!({
+            "component_id": component_id,
+            "name": name,
+            "port": port,
+            "component_type": ctype,
+        }),
+    );
     Json(ApiResponse::success(resp))
 }
 
@@ -61,8 +78,14 @@ async fn unregister(
     State(state): State<Arc<AppState>>,
     Json(req): Json<serde_json::Value>,
 ) -> Json<ApiResponse<bool>> {
-    let component_id = req["id"].as_str().unwrap_or("");
-    let ok = state.registry.unregister(component_id).await;
+    let component_id = req["id"].as_str().unwrap_or("").to_string();
+    let ok = state.registry.unregister(&component_id).await;
+    if ok {
+        publish(
+            EVENT_COMPONENT_UNREGISTERED,
+            serde_json::json!({ "component_id": component_id }),
+        );
+    }
     Json(ApiResponse::success(ok))
 }
 
@@ -172,10 +195,16 @@ async fn install_app(
     };
 
     match state.app_manager.install(&manifest).await {
-        Ok(_) => Json(ApiResponse::success_with_msg(
-            "installed".to_string(),
-            "应用安装成功",
-        )),
+        Ok(_) => {
+            publish(
+                EVENT_APP_STATUS_CHANGED,
+                serde_json::json!({ "app_id": id, "new_status": "installed" }),
+            );
+            Json(ApiResponse::success_with_msg(
+                "installed".to_string(),
+                "应用安装成功",
+            ))
+        }
         Err(e) => Json(ApiResponse::error_code(
             pnos::error::ErrorCode::AppStartFailed,
             e.to_string(),
@@ -199,10 +228,16 @@ async fn start_app(
     };
 
     match state.app_manager.start(&manifest).await {
-        Ok(_) => Json(ApiResponse::success_with_msg(
-            "started".to_string(),
-            "应用启动成功",
-        )),
+        Ok(_) => {
+            publish(
+                EVENT_APP_STATUS_CHANGED,
+                serde_json::json!({ "app_id": id, "new_status": "running" }),
+            );
+            Json(ApiResponse::success_with_msg(
+                "started".to_string(),
+                "应用启动成功",
+            ))
+        }
         Err(e) => Json(ApiResponse::error_code(
             pnos::error::ErrorCode::AppStartFailed,
             e.to_string(),
@@ -216,10 +251,16 @@ async fn stop_app(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Json<ApiResponse<String>> {
     match state.app_manager.stop(&id).await {
-        Ok(_) => Json(ApiResponse::success_with_msg(
-            "stopped".to_string(),
-            "应用已停止",
-        )),
+        Ok(_) => {
+            publish(
+                EVENT_APP_STATUS_CHANGED,
+                serde_json::json!({ "app_id": id, "new_status": "stopped" }),
+            );
+            Json(ApiResponse::success_with_msg(
+                "stopped".to_string(),
+                "应用已停止",
+            ))
+        }
         Err(e) => Json(ApiResponse::error_code(
             pnos::error::ErrorCode::AppStopFailed,
             e.to_string(),
