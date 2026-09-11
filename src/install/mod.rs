@@ -361,12 +361,13 @@ impl InstallService {
         manifest: &PackageManifest,
         target_dir: &Path,
     ) -> anyhow::Result<()> {
-        info!("下载应用包: {}", manifest.download_url);
+        let download_url = crate::download::apply_download_mirror(&manifest.download_url);
+        info!("下载应用包: {}", download_url);
 
         // 下载
         let resp = self
             .http_client
-            .get(&manifest.download_url)
+            .get(&download_url)
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("下载失败: {}", e))?;

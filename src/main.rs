@@ -4,6 +4,7 @@ mod agent;
 mod api;
 mod app_manager;
 mod config;
+mod download;
 mod install;
 mod proxy;
 mod registry;

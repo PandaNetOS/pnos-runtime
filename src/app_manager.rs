@@ -44,9 +44,11 @@ impl AppManager {
 
         let binary_path = app_dir.join(&manifest.binary.binary_name);
         if !binary_path.exists() {
-            info!("下载应用 {}: {}", manifest.id, manifest.binary.download_url);
+            let download_url =
+                crate::download::apply_download_mirror(&manifest.binary.download_url);
+            info!("下载应用 {}: {}", manifest.id, download_url);
 
-            let resp = match reqwest::get(&manifest.binary.download_url).await {
+            let resp = match reqwest::get(&download_url).await {
                 Ok(r) => r,
                 Err(e) => {
                     error!("下载失败 {}: {}", manifest.id, e);
