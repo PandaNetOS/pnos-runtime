@@ -105,12 +105,28 @@ impl Color {
     }
 }
 
+/// 安装进度
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct InstallProgress {
+    /// 阶段：downloading / extracting / starting / done
+    pub phase: String,
+    /// 已下载字节
+    pub downloaded: u64,
+    /// 总字节（未知为 None）
+    pub total: Option<u64>,
+    /// 附加信息（如失败原因）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
 /// 安装服务
 #[derive(Clone)]
 pub struct InstallService {
     apps_dir: PathBuf,
     data_dir: PathBuf,
     installed: Arc<RwLock<HashMap<String, InstalledApp>>>,
+    /// 安装进度表（含历史，重复安装时覆盖）
+    progress: Arc<std::sync::Mutex<HashMap<String, InstallProgress>>>,
     agent_manager: Arc<AgentManager>,
     http_client: reqwest::Client,
 }
@@ -121,11 +137,59 @@ impl InstallService {
             apps_dir,
             data_dir,
             installed: Arc::new(RwLock::new(HashMap::new())),
+            progress: Arc::new(std::sync::Mutex::new(HashMap::new())),
             agent_manager,
             http_client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(120))
+                .connect_timeout(std::time::Duration::from_secs(30))
+                .timeout(std::time::Duration::from_secs(600))
                 .build()
                 .unwrap_or_default(),
+        }
+    }
+
+    /// 查询安装进度
+    pub fn progress(&self, id: &str) -> Option<InstallProgress> {
+        self.progress.lock().ok()?.get(id).cloned()
+    }
+
+    /// 启动已安装应用
+    pub async fn start(&self, id: &str) -> anyhow::Result<()> {
+        self.installed
+            .read()
+            .await
+            .get(id)
+            .ok_or_else(|| anyhow::anyhow!("应用未安装: {}", id))?;
+        self.agent_manager.start(id).await
+    }
+
+    /// 停止已安装应用
+    pub async fn stop(&self, id: &str) -> anyhow::Result<()> {
+        self.installed
+            .read()
+            .await
+            .get(id)
+            .ok_or_else(|| anyhow::anyhow!("应用未安装: {}", id))?;
+        self.agent_manager.stop(id).await
+    }
+
+    fn set_progress(
+        &self,
+        id: &str,
+        phase: &str,
+        downloaded: u64,
+        total: Option<u64>,
+        message: Option<String>,
+    ) {
+        if let Ok(mut map) = self.progress.lock() {
+            map.insert(
+                id.to_string(),
+                InstallProgress {
+                    phase: phase.to_string(),
+                    downloaded,
+                    total,
+                    message,
+                },
+            );
         }
     }
 
@@ -153,6 +217,7 @@ impl InstallService {
         self.download_and_extract(&manifest, &blue_dir).await?;
 
         // 3. 试运行（启动 → 健康检查 → 停止）
+        self.set_progress(&id, "starting", 0, None, None);
         let port = self.allocate_port(manifest.port).await?;
         let trial_config = self.build_agent_config(&manifest, &blue_dir, &data_dir, port);
         self.agent_manager.register(trial_config.clone()).await;
@@ -198,6 +263,7 @@ impl InstallService {
         // 启动应用
         self.agent_manager.start(&id).await?;
 
+        self.set_progress(&id, "done", 0, None, None);
         info!("应用安装完成: {} v{}", id, version);
         Ok(())
     }
@@ -231,6 +297,7 @@ impl InstallService {
         self.download_and_extract(&manifest, &target_dir).await?;
 
         // 4. 停止旧版本
+        self.set_progress(&id, "starting", 0, None, None);
         info!("停止旧版本: {}", id);
         self.agent_manager.stop(&id).await?;
 
@@ -285,6 +352,7 @@ impl InstallService {
             installed.manifest = manifest;
         }
 
+        self.set_progress(&id, "done", 0, None, None);
         info!("应用升级完成: {} v{}", id, installed.version);
         Ok(())
     }
@@ -355,14 +423,19 @@ impl InstallService {
 
     // ---- 内部方法 ----
 
-    /// 下载并解压包
+    /// 下载并解压包（流式下载，实时更新进度）
     async fn download_and_extract(
         &self,
         manifest: &PackageManifest,
         target_dir: &Path,
     ) -> anyhow::Result<()> {
+        use futures_util::StreamExt;
+        use sha2::Digest;
+        use tokio::io::AsyncWriteExt;
+
         let download_url = crate::download::apply_download_mirror(&manifest.download_url);
         info!("下载应用包: {}", download_url);
+        self.set_progress(&manifest.id, "downloading", 0, None, None);
 
         // 下载
         let resp = self
@@ -376,32 +449,42 @@ impl InstallService {
             return Err(anyhow::anyhow!("下载失败: HTTP {}", resp.status()));
         }
 
-        let bytes = resp
-            .bytes()
-            .await
-            .map_err(|e| anyhow::anyhow!("读取下载内容失败: {}", e))?;
+        let total = resp.content_length();
+        let tmp_file = target_dir.join("package.tar.gz");
 
-        // SHA256 校验
+        // 流式写盘 + 计算哈希 + 更新进度
+        let mut hasher = sha2::Sha256::new();
+        let mut downloaded: u64 = 0;
+        let mut writer = tokio::fs::File::create(&tmp_file).await?;
+        let mut stream = resp.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| anyhow::anyhow!("读取下载内容失败: {}", e))?;
+            hasher.update(&chunk);
+            writer.write_all(&chunk).await?;
+            downloaded += chunk.len() as u64;
+            self.set_progress(&manifest.id, "downloading", downloaded, total, None);
+        }
+        writer.flush().await?;
+        drop(writer);
+
+        // SHA256 校验：manifest 未提供（None 或空串）时跳过
         if let Some(expected_sha) = &manifest.sha256 {
-            use sha2::{Digest, Sha256};
-            let mut hasher = Sha256::new();
-            hasher.update(&bytes);
-            let actual_sha = format!("{:x}", hasher.finalize());
-            if &actual_sha != expected_sha {
-                return Err(anyhow::anyhow!(
-                    "SHA256 校验失败: 期望={}, 实际={}",
-                    expected_sha,
-                    actual_sha
-                ));
+            let expected_sha = expected_sha.trim();
+            if !expected_sha.is_empty() {
+                let actual_sha = format!("{:x}", hasher.finalize());
+                if actual_sha != expected_sha {
+                    return Err(anyhow::anyhow!(
+                        "SHA256 校验失败: 期望={}, 实际={}",
+                        expected_sha,
+                        actual_sha
+                    ));
+                }
+                info!("SHA256 校验通过");
             }
-            info!("SHA256 校验通过");
         }
 
-        // 保存到临时文件
-        let tmp_file = target_dir.join("package.tar.gz");
-        tokio::fs::write(&tmp_file, &bytes).await?;
-
         // 解压（tar.gz）
+        self.set_progress(&manifest.id, "extracting", downloaded, total, None);
         let tmp_file_clone = tmp_file.clone();
         let target_dir_clone = target_dir.to_path_buf();
         let result = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {

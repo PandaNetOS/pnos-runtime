@@ -28,6 +28,9 @@ pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/installed/:id/install", post(install_app))
         .route("/installed/:id/upgrade", post(upgrade_app))
         .route("/installed/:id/uninstall", delete(uninstall_app))
+        .route("/installed/:id/progress", get(install_progress))
+        .route("/installed/:id/start", post(install_start))
+        .route("/installed/:id/stop", post(install_stop))
         .with_state(state)
 }
 
@@ -194,6 +197,40 @@ async fn upgrade_app(
 
     match state.install_service.upgrade(package).await {
         Ok(_) => Json(ApiResponse::success_with_msg((), "升级成功")),
+        Err(e) => Json(ApiResponse::error(&pnos::error::PnosError::External(
+            e.to_string(),
+        ))),
+    }
+}
+
+/// 查询安装进度
+async fn install_progress(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Json<ApiResponse<Option<crate::install::InstallProgress>>> {
+    Json(ApiResponse::success(state.install_service.progress(&id)))
+}
+
+/// 启动已安装应用
+async fn install_start(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Json<ApiResponse<()>> {
+    match state.install_service.start(&id).await {
+        Ok(_) => Json(ApiResponse::success_with_msg((), "启动成功")),
+        Err(e) => Json(ApiResponse::error(&pnos::error::PnosError::External(
+            e.to_string(),
+        ))),
+    }
+}
+
+/// 停止已安装应用
+async fn install_stop(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Json<ApiResponse<()>> {
+    match state.install_service.stop(&id).await {
+        Ok(_) => Json(ApiResponse::success_with_msg((), "停止成功")),
         Err(e) => Json(ApiResponse::error(&pnos::error::PnosError::External(
             e.to_string(),
         ))),
