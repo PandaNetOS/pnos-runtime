@@ -70,8 +70,7 @@ pub async fn ws_handler(
 /// 单连接处理：拆分 sink/source，订阅管理 + 事件转发 + Ping-Pong
 async fn handle_socket(socket: WebSocket) {
     let (mut sender, mut receiver) = socket.split();
-    let subscriptions: Arc<TokioMutex<HashSet<String>>> =
-        Arc::new(TokioMutex::new(HashSet::new()));
+    let subscriptions: Arc<TokioMutex<HashSet<String>>> = Arc::new(TokioMutex::new(HashSet::new()));
 
     let bus = match EVENT_BUS.get() {
         Some(b) => b,

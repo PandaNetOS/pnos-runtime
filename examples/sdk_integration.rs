@@ -18,8 +18,8 @@ use tokio::sync::Notify;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let runtime_url = std::env::var("PNOS_RUNTIME_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+    let runtime_url =
+        std::env::var("PNOS_RUNTIME_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
 
     println!("==> 目标 runtime: {}", runtime_url);
 

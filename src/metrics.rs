@@ -22,7 +22,7 @@ const SAMPLE_CAP: usize = 4096;
 /// 单端点的统计
 struct EndpointStat {
     count: u64,
-    errors: u64,       // >= 400
+    errors: u64,        // >= 400
     server_errors: u64, // >= 500
     total_us: u128,
     samples: VecDeque<f64>, // 最近若干耗时样本（微秒），用于算高分位
@@ -72,8 +72,8 @@ pub struct Metrics {
     in_flight: AtomicUsize,
     agent_crashes: AtomicU64,
     agent_restarts: AtomicU64,
-    store_refresh_ms: AtomicU64, // 0 = 尚未刷新
-    task_ticks: Mutex<HashMap<String, Arc<AtomicU64>>>, // 任务名 -> 最后成功 tick 的 epoch ms
+    store_refresh_ms: AtomicU64,                           // 0 = 尚未刷新
+    task_ticks: Mutex<HashMap<String, Arc<AtomicU64>>>,    // 任务名 -> 最后成功 tick 的 epoch ms
     proc_cache: Mutex<Option<(Instant, ProcessSnapshot)>>, // 进程指标 1s 缓存
 }
 
@@ -305,7 +305,9 @@ pub async fn get_metrics(
     } else {
         Response::builder()
             .header(CONTENT_TYPE, "application/json")
-            .body(axum::body::Body::from(serde_json::to_string(&snapshot).unwrap_or_default()))
+            .body(axum::body::Body::from(
+                serde_json::to_string(&snapshot).unwrap_or_default(),
+            ))
             .unwrap()
     }
 }
@@ -325,15 +327,24 @@ fn to_prometheus(snap: &serde_json::Value) -> String {
             out.push_str(&format!("pnos_http_requests_total{} {}\n", labels, count));
             out.push_str(&format!("pnos_http_errors_total{} {}\n", labels, errs));
             out.push_str(&format!("pnos_http_duration_ms{{}}{} {}\n", labels, p50));
-            out.push_str(&format!("pnos_http_duration_p99_ms{{}}{} {}\n", labels, p99));
-            out.push_str(&format!("pnos_http_duration_p999_ms{{}}{} {}\n", labels, p999));
+            out.push_str(&format!(
+                "pnos_http_duration_p99_ms{{}}{} {}\n",
+                labels, p99
+            ));
+            out.push_str(&format!(
+                "pnos_http_duration_p999_ms{{}}{} {}\n",
+                labels, p999
+            ));
         }
     }
     if let Some(b) = snap.get("business") {
         let comp = b.get("components").and_then(|v| v.as_u64()).unwrap_or(0);
         let off = b.get("offline").and_then(|v| v.as_u64()).unwrap_or(0);
         let crashes = b.get("agent_crashes").and_then(|v| v.as_u64()).unwrap_or(0);
-        let restarts = b.get("agent_restarts").and_then(|v| v.as_u64()).unwrap_or(0);
+        let restarts = b
+            .get("agent_restarts")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
         out.push_str(&format!("pnos_components_total {}\n", comp));
         out.push_str(&format!("pnos_components_offline {}\n", off));
         out.push_str(&format!("pnos_agent_crashes_total {}\n", crashes));

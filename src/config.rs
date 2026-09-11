@@ -7,8 +7,8 @@ use reqwest::Client;
 use crate::agent::AgentManager;
 use crate::app_manager::AppManager;
 use crate::install::InstallService;
-use crate::registry::Registry;
 use crate::metrics::Metrics;
+use crate::registry::Registry;
 use crate::service::monitor::MonitorService;
 use crate::service::store::StoreService;
 
