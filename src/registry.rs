@@ -153,6 +153,9 @@ impl Registry {
     }
 
     /// 按类型筛选组件
+    ///
+    /// 预留：Web UI / ICC 按 `ComponentType` 过滤（当前前端取全量后自行过滤）
+    #[allow(dead_code)]
     pub async fn list_by_type(&self, component_type: ComponentType) -> Vec<ComponentInfo> {
         self.components
             .read()
@@ -164,6 +167,10 @@ impl Registry {
     }
 
     /// 验证 Token
+    ///
+    /// 预留：按组件 ID 精确校验（HTTP 侧目前用 [`Self::token_valid`] 校验任意已注册组件 token，
+    /// 组件级授权待 Web UI 多用户/权限模型落地后接入）
+    #[allow(dead_code)]
     pub async fn verify_token(&self, component_id: &str, token: &str) -> bool {
         self.components
             .read()
@@ -183,13 +190,26 @@ impl Registry {
     }
 
     /// 启动心跳超时检查任务
+    ///
+    /// [ALLOWED-SLEEP] 心跳超时巡检是本运行时的核心职责循环：
+    /// 巡检周期由 `config::heartbeat_check_interval()` 提供（环境变量可调），
+    /// 并响应进程关闭信号，因此不属于"模块内部自跑定时"。
     pub fn start_heartbeat_checker(&self) {
         let registry = self.clone();
+        let check_interval = crate::config::heartbeat_check_interval();
         tokio::spawn(async move {
+            let mut shutdown = crate::shutdown::subscribe();
+            // [ALLOWED-SLEEP] 巡检周期来自 config::heartbeat_check_interval()（环境变量可调）
             loop {
-                tokio::time::sleep(Duration::from_secs(10)).await;
-                registry.check_heartbeats().await;
-                crate::metrics::global().map(|m| m.mark_task("heartbeat_checker"));
+                tokio::select! {
+                    _ = tokio::time::sleep(check_interval) => {
+                        registry.check_heartbeats().await;
+                        if let Some(m) = crate::metrics::global() {
+                            m.mark_task("heartbeat_checker");
+                        }
+                    }
+                    _ = shutdown.changed() => break,
+                }
             }
         });
     }
@@ -201,15 +221,15 @@ impl Registry {
             let mut components = self.components.write().await;
             let now = Instant::now();
             for component in components.values_mut() {
-                if now.duration_since(component.last_heartbeat) > self.heartbeat_timeout {
-                    if component.info.status != ComponentStatus::Offline {
-                        warn!("组件心跳超时，标记为离线: {}", component.info.id);
-                        component.info.status = ComponentStatus::Offline;
-                        offline.push((
-                            component.info.id.clone(),
-                            format!("{:?}", component.info.component_type),
-                        ));
-                    }
+                if now.duration_since(component.last_heartbeat) > self.heartbeat_timeout
+                    && component.info.status != ComponentStatus::Offline
+                {
+                    warn!("组件心跳超时，标记为离线: {}", component.info.id);
+                    component.info.status = ComponentStatus::Offline;
+                    offline.push((
+                        component.info.id.clone(),
+                        format!("{:?}", component.info.component_type),
+                    ));
                 }
             }
         }

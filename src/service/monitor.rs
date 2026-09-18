@@ -84,20 +84,31 @@ impl MonitorService {
     }
 
     /// 启动后台采集任务。在构造后调用一次即可。
+    ///
+    /// [ALLOWED-INTERVAL] 指标采样是运行时自身的固定低频职责，周期来自
+    /// `MonitorService::interval`（构造时可配），并响应进程关闭信号。
     pub fn start(self: &Arc<Self>) {
         let svc = self.clone();
         tokio::spawn(async move {
+            // [ALLOWED-INTERVAL] 采样周期来自 MonitorService::interval（构造时可配）
             let mut ticker = tokio::time::interval(svc.interval);
+            let mut shutdown = crate::shutdown::subscribe();
             loop {
-                ticker.tick().await;
-                let stats = svc.collect();
-                *svc.snapshot.write().await = stats.clone();
-                // 实时推送系统指标（低频，2s 一次，广播给订阅 system.stats 的客户端）
-                publish(
-                    EVENT_SYSTEM_STATS,
-                    serde_json::to_value(&stats).unwrap_or(serde_json::Value::Null),
-                );
-                crate::metrics::global().map(|m| m.mark_task("monitor"));
+                tokio::select! {
+                    _ = ticker.tick() => {
+                        let stats = svc.collect();
+                        *svc.snapshot.write().await = stats.clone();
+                        // 实时推送系统指标（低频，广播给订阅 system.stats 的客户端）
+                        publish(
+                            EVENT_SYSTEM_STATS,
+                            serde_json::to_value(&stats).unwrap_or(serde_json::Value::Null),
+                        );
+                        if let Some(m) = crate::metrics::global() {
+                            m.mark_task("monitor");
+                        }
+                    }
+                    _ = shutdown.changed() => break,
+                }
             }
         });
     }
@@ -135,7 +146,7 @@ impl MonitorService {
             self.disks_cache.lock().unwrap().clone()
         };
 
-        compute_stats(&*sys, &disks_info)
+        compute_stats(&sys, &disks_info)
     }
 }
 

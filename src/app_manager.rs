@@ -19,6 +19,8 @@ use pnos::app::{AppManifest, AppStatus};
 /// 运行中的应用进程
 struct RunningApp {
     process: Child,
+    /// 预留：启动后需要回读清单判断版本/端口（当前由 install_service 持有权威副本）
+    #[allow(dead_code)]
     manifest: AppManifest,
 }
 
@@ -228,6 +230,9 @@ impl AppManager {
     }
 
     /// 获取应用状态
+    ///
+    /// 预留：Web UI 可直接查询单个应用状态（当前由 `/api/v1/components` 统一返回）
+    #[allow(dead_code)]
     pub async fn status(&self, app_id: &str) -> AppStatus {
         let mut processes = self.processes.write().await;
         if let Some(app) = processes.get_mut(app_id) {
@@ -242,6 +247,9 @@ impl AppManager {
     }
 
     /// 列出已安装应用
+    ///
+    /// 预留：返回内存中正在运行的应用（磁盘上的安装清单以 `install_service` 为准）
+    #[allow(dead_code)]
     pub async fn installed_apps(&self) -> Vec<String> {
         self.processes.read().await.keys().cloned().collect()
     }

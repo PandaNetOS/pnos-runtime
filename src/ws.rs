@@ -42,6 +42,9 @@ pub fn publish(event_type: &str, payload: serde_json::Value) {
 }
 
 /// 发布事件并指定来源组件 ID
+///
+/// 预留：供需要标注来源的发布点使用（当前发布点均不带 source，由 WS 客户端按 event_type 订阅）
+#[allow(dead_code)]
 pub fn publish_with_source(event_type: &str, source: &str, payload: serde_json::Value) {
     if let Some(bus) = EVENT_BUS.get() {
         let _ = bus
@@ -64,7 +67,7 @@ pub async fn ws_handler(
         )
             .into_response();
     }
-    ws.on_upgrade(move |socket| handle_socket(socket))
+    ws.on_upgrade(handle_socket)
 }
 
 /// 单连接处理：拆分 sink/source，订阅管理 + 事件转发 + Ping-Pong

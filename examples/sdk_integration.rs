@@ -16,10 +16,15 @@ use pnos::component::{ComponentStatus, ComponentType};
 use pnos_comm::PnosApp;
 use tokio::sync::Notify;
 
+/// 默认 runtime 地址（示例用；真实部署由 `PNOS_RUNTIME_URL` 指定）
+const DEFAULT_RUNTIME_URL: &str = "http://127.0.0.1:8080";
+/// 等待 WS 事件的超时（示例用）
+const WS_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let runtime_url =
-        std::env::var("PNOS_RUNTIME_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+        std::env::var("PNOS_RUNTIME_URL").unwrap_or_else(|_| DEFAULT_RUNTIME_URL.to_string());
 
     println!("==> 目标 runtime: {}", runtime_url);
 
@@ -67,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
     println!("[3] 注册成功 (trigger)，runtime 应已广播 component.registered");
 
     // 等待监听者通过 WS 收到事件
-    let ws_ok = tokio::time::timeout(Duration::from_secs(5), received.notified())
+    let ws_ok = tokio::time::timeout(WS_WAIT_TIMEOUT, received.notified())
         .await
         .is_ok();
     println!(

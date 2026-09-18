@@ -17,33 +17,51 @@ use tracing::{error, info, warn};
 use crate::config::AppState;
 
 /// Agent 配置
-#[derive(Debug, Clone)]
+///
+/// `memory_limit` / `cpu_limit` / `health_check_path` / `startup_timeout` 是进程约束配置面：
+/// 由应用清单提供，待运行时接入资源限制与启动探活后生效，当前仅解析与透传。
+/// 全部字段带 `serde(default)`：清单省略任一项时回落到类型默认值，保证向后兼容。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[allow(dead_code)]
 pub struct AgentConfig {
     /// 组件 ID
+    #[serde(default)]
     pub id: String,
     /// 组件名称
+    #[serde(default)]
     pub name: String,
     /// 版本
+    #[serde(default)]
     pub version: String,
     /// 监听端口
+    #[serde(default)]
     pub port: u16,
     /// 入口命令（相对安装目录）
+    #[serde(default)]
     pub entrypoint: String,
     /// 安装目录
+    #[serde(default)]
     pub install_dir: PathBuf,
     /// 数据目录
+    #[serde(default)]
     pub data_dir: PathBuf,
     /// 环境变量
+    #[serde(default)]
     pub env: HashMap<String, String>,
     /// 内存限制（字节，0 表示不限制）
+    #[serde(default)]
     pub memory_limit: u64,
     /// CPU 限制（核数，0 表示不限制）
+    #[serde(default)]
     pub cpu_limit: f32,
     /// 健康检查路径
+    #[serde(default)]
     pub health_check_path: String,
     /// 启动超时（秒）
+    #[serde(default)]
     pub startup_timeout: u64,
     /// 优雅关闭超时（秒）
+    #[serde(default)]
     pub shutdown_timeout: u64,
 }
 
@@ -52,6 +70,9 @@ pub struct AgentConfig {
 #[serde(rename_all = "snake_case")]
 pub enum AgentStatus {
     /// 未安装
+    ///
+    /// 状态词表的一部分：Web UI 的组件状态含 `not_installed`，运行时侧暂由"注册表无记录"表达
+    #[allow(dead_code)]
     NotInstalled,
     /// 已安装，未启动
     Stopped,
@@ -324,6 +345,9 @@ impl AgentManager {
     }
 
     /// 重置崩溃计数（手动重启后调用）
+    ///
+    /// 预留：手动重启入口（`/api/v1/agents/:id/restart`）接入后调用，避免崩溃退避残留
+    #[allow(dead_code)]
     pub async fn reset_crash_count(&self, id: &str) {
         let mut agents = self.agents.write().await;
         if let Some(handle) = agents.get_mut(id) {
@@ -351,12 +375,19 @@ impl AgentManager {
     }
 
     /// 启动监控循环（崩溃检测 + 健康检查 + 自动重启）
+    ///
+    /// [ALLOWED-INTERVAL] Agent 巡检是本运行时的核心职责，周期由
+    /// `config::agent_monitor_interval()` 提供（环境变量可调），并响应进程关闭信号。
     pub fn start_monitor(self: Arc<Self>, state: Arc<AppState>) {
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            // [ALLOWED-INTERVAL] 巡检周期来自 config::agent_monitor_interval()（环境变量可调）
+            let mut interval = tokio::time::interval(crate::config::agent_monitor_interval());
+            let mut shutdown = crate::shutdown::subscribe();
             loop {
-                interval.tick().await;
-                self.monitor_tick(state.clone()).await;
+                tokio::select! {
+                    _ = interval.tick() => self.monitor_tick(state.clone()).await,
+                    _ = shutdown.changed() => break,
+                }
             }
         });
     }
@@ -400,7 +431,9 @@ impl AgentManager {
 
             if crashed {
                 self.mark_crash(id).await;
-                crate::metrics::global().map(|m| m.incr_agent_crash());
+                if let Some(m) = crate::metrics::global() {
+                    m.incr_agent_crash();
+                }
                 // 自动重启（如果崩溃次数 < 5）
                 let crash_count = self
                     .agents
@@ -419,7 +452,9 @@ impl AgentManager {
                     tokio::time::sleep(Duration::from_secs(delay)).await;
                     match self.start(id).await {
                         Ok(_) => {
-                            crate::metrics::global().map(|m| m.incr_agent_restart());
+                            if let Some(m) = crate::metrics::global() {
+                                m.incr_agent_restart();
+                            }
                         }
                         Err(e) => error!("Agent {} 自动重启失败: {}", id, e),
                     }

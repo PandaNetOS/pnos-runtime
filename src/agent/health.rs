@@ -3,7 +3,6 @@
 //! 定期调用 Agent 的 /health/ready 端点，检查 Agent 是否就绪。
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use tracing::{debug, warn};
 
@@ -38,7 +37,7 @@ pub async fn check_health(agent_id: &str, state: Arc<AppState>) -> bool {
     let client = &state.http_client;
     match client
         .get(&health_url)
-        .timeout(Duration::from_secs(3))
+        .timeout(crate::config::settings().agent_health_timeout)
         .send()
         .await
     {

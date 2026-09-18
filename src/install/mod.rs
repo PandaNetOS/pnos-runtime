@@ -140,8 +140,8 @@ impl InstallService {
             progress: Arc::new(std::sync::Mutex::new(HashMap::new())),
             agent_manager,
             http_client: reqwest::Client::builder()
-                .connect_timeout(std::time::Duration::from_secs(30))
-                .timeout(std::time::Duration::from_secs(600))
+                .connect_timeout(crate::config::settings().install_connect_timeout)
+                .timeout(crate::config::settings().install_timeout)
                 .build()
                 .unwrap_or_default(),
         }
@@ -362,7 +362,7 @@ impl InstallService {
         info!("卸载应用: {} (保留数据={})", id, keep_data);
 
         let installed = { self.installed.read().await.get(id).cloned() };
-        let installed = installed.ok_or_else(|| anyhow::anyhow!("应用未安装: {}", id))?;
+        installed.ok_or_else(|| anyhow::anyhow!("应用未安装: {}", id))?;
 
         // 1. 停止应用
         if self.agent_manager.get_status(id).await == Some(crate::agent::AgentStatus::Running) {
@@ -566,7 +566,7 @@ impl InstallService {
                     return true;
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            tokio::time::sleep(crate::config::settings().install_settle_interval).await;
         }
         false
     }

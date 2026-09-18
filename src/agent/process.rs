@@ -9,6 +9,9 @@ use std::process::Stdio;
 use tokio::process::Command;
 
 /// 构建 Agent 启动命令
+///
+/// 预留工具：AgentManager 当前内联构造命令（需要 stdout/stderr 落盘），此函数供后续统一入口使用
+#[allow(dead_code)]
 pub fn build_command(
     entrypoint: &str,
     work_dir: &Path,
@@ -24,6 +27,9 @@ pub fn build_command(
 }
 
 /// 检查进程是否仍在运行
+///
+/// 预留工具：AgentManager 使用 `kill_on_drop` + 状态表判断存活，此函数供外部检查使用
+#[allow(dead_code)]
 pub async fn is_running(child: &mut tokio::process::Child) -> bool {
     match child.try_wait() {
         Ok(Some(_)) => false,

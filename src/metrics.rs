@@ -130,11 +130,11 @@ impl Metrics {
     }
 
     fn proc_snapshot(&self) -> ProcessSnapshot {
-        // 1s 缓存，避免每次请求都刷 sysinfo
+        // 短缓存（默认 1s，`PNOS_METRICS_CACHE_TTL_SECS` 可覆盖），避免每次请求都刷 sysinfo
         {
             let cache = self.proc_cache.lock().unwrap();
             if let Some((ts, snap)) = cache.as_ref() {
-                if ts.elapsed() < Duration::from_secs(1) {
+                if ts.elapsed() < crate::config::settings().metrics_cache_ttl {
                     return snap.clone();
                 }
             }
@@ -146,13 +146,18 @@ impl Metrics {
     }
 }
 
+/// 线程数取不到时的占位值（部分平台不提供）
+const UNKNOWN_THREAD_COUNT: u64 = 0;
+/// 打开文件数未知（Windows 不支持）
+const UNKNOWN_OPEN_FILES: i64 = -1;
+
 #[derive(Clone)]
 struct ProcessSnapshot {
     pid: u32,
     cpu_percent: f32,
     memory_bytes: u64,
     thread_count: u64,
-    open_files: i64, // -1 = 未知（Windows 不支持）
+    open_files: i64,
 }
 
 fn now_ms() -> u64 {
@@ -172,12 +177,17 @@ fn collect_process() -> ProcessSnapshot {
         pid,
         cpu_percent: 0.0,
         memory_bytes: 0,
-        thread_count: 0,
-        open_files: -1,
+        thread_count: UNKNOWN_THREAD_COUNT,
+        open_files: UNKNOWN_OPEN_FILES,
     };
     if let Some(p) = sys.process(Pid::from_u32(pid)) {
         snap.cpu_percent = p.cpu_usage();
         snap.memory_bytes = p.memory();
+        // 线程数：sysinfo 支持的平台直接给出，取不到时保持"未知"占位
+        snap.thread_count = p
+            .tasks()
+            .map(|t| t.len() as u64)
+            .unwrap_or(UNKNOWN_THREAD_COUNT);
     }
     snap
 }

@@ -8,7 +8,7 @@
 //! `Into<Infallible>` 约束冲突。
 
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -123,17 +123,17 @@ pub async fn concurrency_middleware(req: Request<Body>, next: Next) -> Response 
 
 // ---------------- 超时 ----------------
 
-/// 通用超时中间件（API 默认 30s）
+/// 通用超时中间件（默认 30s，`PNOS_API_TIMEOUT_SECS` 可覆盖）
 pub async fn timeout_middleware(req: Request<Body>, next: Next) -> Response {
-    match tokio::time::timeout(Duration::from_secs(30), next.run(req)).await {
+    match tokio::time::timeout(crate::config::settings().api_timeout, next.run(req)).await {
         Ok(resp) => resp,
         Err(_) => StatusCode::GATEWAY_TIMEOUT.into_response(),
     }
 }
 
-/// 代理专用超时中间件（120s，容忍大文件转发）
+/// 代理专用超时中间件（默认 120s，`PNOS_PROXY_TIMEOUT_SECS` 可覆盖，容忍大文件转发）
 pub async fn proxy_timeout_middleware(req: Request<Body>, next: Next) -> Response {
-    match tokio::time::timeout(Duration::from_secs(120), next.run(req)).await {
+    match tokio::time::timeout(crate::config::settings().proxy_timeout, next.run(req)).await {
         Ok(resp) => resp,
         Err(_) => StatusCode::GATEWAY_TIMEOUT.into_response(),
     }

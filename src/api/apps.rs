@@ -122,7 +122,7 @@ async fn list_components(
             let total = all.len();
             let ps = params.page_size.unwrap_or(50).clamp(1, 200);
             let page = page.max(1);
-            let start = ((page - 1) * ps) as usize;
+            let start = (page - 1) * ps;
             let items: Vec<_> = all.into_iter().skip(start).take(ps).collect();
             Json(ApiResponse::success(serde_json::json!({
                 "items": items,
