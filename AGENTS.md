@@ -37,6 +37,7 @@ pnos-runtime/
 |---|---|
 | `cargo build --release` | Release 构建 |
 | `cargo test --all` | 运行所有测试 |
+| `.\check-compliance.ps1 -Smoke` | 行为冒烟：按 `compliance-smoke.json` 起服务断言 HTTP 契约（检查项 27） |
 | `./target/release/pnos-runtime serve` | 启动运行时 |
 
 ## 关键配置

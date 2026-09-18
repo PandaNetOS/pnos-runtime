@@ -1,0 +1,39 @@
+{
+  "command": "target\\release\\pnos-runtime.exe",
+  "workDir": ".",
+  "baseUrl": "http://127.0.0.1:8080",
+  "env": {
+    "PNOS_PORT": "8080",
+    "PNOS_DATA_DIR": "target/smoke-data",
+    "PNOS_WEB_DIR": "target/smoke-web"
+  },
+  "ready": { "path": "/health", "timeoutSecs": 30 },
+  "cases": [
+    {
+      "path": "/health",
+      "expectStatus": 200,
+      "expectBodyContains": "ok"
+    },
+    {
+      "path": "/api/v1/system/info",
+      "expectStatus": 200,
+      "expectContentType": "application/json",
+      "expectBodyContains": "\"code\":0"
+    },
+    {
+      "path": "/api/v1/system/config",
+      "expectStatus": 200,
+      "expectContentType": "application/json",
+      "expectBodyContains": "proxy_prefix"
+    },
+    {
+      "path": "/api/v1/components",
+      "expectStatus": 200,
+      "expectContentType": "application/json"
+    },
+    {
+      "path": "/api/v1/this-path-does-not-exist",
+      "expectStatus": 404
+    }
+  ]
+}
