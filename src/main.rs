@@ -35,6 +35,10 @@ use crate::config::AppState;
 /// 生产容器用 `PNOS_WEB_DIR` 指向镜像里的静态目录
 const WEB_DIR_SUBDIR: &str = "web";
 
+/// 默认监听地址：0.0.0.0 允许内网其他机器访问；
+/// 本机预览/CI 可设环境变量 PNOS_BIND_ADDR=127.0.0.1 避免防火墙弹窗
+const DEFAULT_BIND_ADDR: &str = "0.0.0.0";
+
 /// 内置商店源：国内可达的 GitHub 代理（可通过配置文件 default_store_url 或
 /// PNOS_STORE_URL 环境变量覆盖，例如换用其它镜像或直连）
 const DEFAULT_STORE_URL: &str =
@@ -168,7 +172,17 @@ async fn main() -> anyhow::Result<()> {
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    // 监听地址可配：默认 0.0.0.0（内网可达）；本机预览/CI 建议 127.0.0.1 ——
+    // 只绑回环时 Windows 防火墙不会弹"允许应用通过防火墙"提示框（避免本地反复重启被打扰）
+    let bind_ip = std::env::var("PNOS_BIND_ADDR").unwrap_or_else(|_| DEFAULT_BIND_ADDR.to_string());
+    let addr: SocketAddr = format!("{}:{}", bind_ip, port).parse().map_err(|e| {
+        anyhow::anyhow!(
+            "监听地址非法（PNOS_BIND_ADDR={} port={}）: {}",
+            bind_ip,
+            port,
+            e
+        )
+    })?;
     info!("pnos-runtime 监听: http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
